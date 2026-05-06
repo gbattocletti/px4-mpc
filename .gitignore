@@ -4,7 +4,11 @@ log/*
 dist/*
 __pycache__/
 poetry.lock
+
+# Custom ignores
 px4_mpc/px4_mpc/mpc_codegen/
+px4_mpc/dev/
+
 # Environments
 .env
 .venv
