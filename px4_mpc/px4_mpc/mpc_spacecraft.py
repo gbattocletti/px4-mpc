@@ -410,19 +410,27 @@ class SpacecraftMPC(Node):
 
     def check_data_validity(self):
         current_time = Clock().now().nanoseconds / 1e9
+        ret_val = True
 
         # Check if the data is valid based on the timestamps
-        if (current_time - self.vehicle_attitude_timestamp > DATA_VALIDITY_STREAM or
-            current_time - self.vehicle_local_position_timestamp > DATA_VALIDITY_STREAM or
-            current_time - self.vehicle_angular_velocity_timestamp > DATA_VALIDITY_STREAM):
-            self.get_logger().warn("Vehicle attitude, position, or angular velocity data is too old. Skipping offboard control...", throttle_duration_sec=1.0)
-            return False
+        if (current_time - self.vehicle_attitude_timestamp > DATA_VALIDITY_STREAM):
+            self.get_logger().warn("Vehicle attitude data is too old. Skipping offboard control...")
+            self.get_logger().warn(f"Current time: {current_time}, attitude timestamp: {self.vehicle_attitude_timestamp}")
+            ret_val = False
+
+        if (current_time - self.vehicle_local_position_timestamp > DATA_VALIDITY_STREAM):
+            self.get_logger().warn("Vehicle position data is too old. Skipping offboard control...")
+            ret_val = False
+
+        if (current_time - self.vehicle_angular_velocity_timestamp > DATA_VALIDITY_STREAM):
+            self.get_logger().warn("Vehicle angular velocity data is too old. Skipping offboard control...")
+            ret_val = False
 
         if (current_time - self.vehicle_status_timestamp > DATA_VALIDITY_STATUS):
-            self.get_logger().warn("Vehicle status data is too old. Skipping offboard control...", throttle_duration_sec=1.0)
-            return False
+            self.get_logger().warn("Vehicle status data is too old. Skipping offboard control...")
+            ret_val = False
 
-        return True
+        return ret_val
 
     def cmdloop_callback(self):
 
