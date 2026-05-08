@@ -36,13 +36,16 @@ import numpy as np
 import casadi as cs
 import os
 
-class SpacecraftWrenchMPC():
+
+class SpacecraftWrenchMPC:
     def __init__(self, model):
         self.model = model
         self.Tf = 5.0
         self.N = 49
 
-        self.x0 = np.array([0.01, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.x0 = np.array(
+            [0.01, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        )
 
         self.ocp_solver, self.integrator = self.setup(self.x0, self.N, self.Tf)
 
@@ -52,9 +55,9 @@ class SpacecraftWrenchMPC():
 
         # Set directory for code generation and json file
         this_file_dir = os.path.dirname(os.path.abspath(__file__))
-        package_root = os.path.abspath(os.path.join(this_file_dir, '..'))
-        codegen_dir = os.path.join(package_root, 'mpc_codegen')
-        json_path = os.path.join(codegen_dir, 'acados_ocp.json')
+        package_root = os.path.abspath(os.path.join(this_file_dir, ".."))
+        codegen_dir = os.path.join(package_root, "mpc_codegen")
+        json_path = os.path.join(codegen_dir, "acados_ocp.json")
         os.makedirs(codegen_dir, exist_ok=True)
         ocp.code_export_directory = codegen_dir
 
@@ -73,10 +76,7 @@ class SpacecraftWrenchMPC():
         ocp.solver_options.N_horizon = N_horizon
 
         # set cost
-        Q_mat = [8e2, 8e2, 8e2,
-                 7e1, 7e1, 7e1,
-                 8e4,
-                 1e1, 1e1, 1e1]
+        Q_mat = [8e2, 8e2, 8e2, 7e1, 7e1, 7e1, 8e4, 1e1, 1e1, 1e1]
         R_mat = [2e1, 2e1, 2e1, 20e1, 20e1, 20e1]
 
         ocp.cost.W_0 = np.diag(Q_mat + R_mat)
@@ -84,8 +84,8 @@ class SpacecraftWrenchMPC():
         ocp.cost.W_e = 20 * np.diag(Q_mat)
 
         # References:
-        x_ref = cs.MX.sym('x_ref', (13, 1))
-        u_ref = cs.MX.sym('u_ref', (6, 1))
+        x_ref = cs.MX.sym("x_ref", (13, 1))
+        u_ref = cs.MX.sym("u_ref", (6, 1))
 
         # Calculate errors
         # x : p,v,q,w               , R9 x SO(3)
@@ -95,16 +95,16 @@ class SpacecraftWrenchMPC():
 
         x_error = x[0:3] - x_ref[0:3]
         x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
-        x_error = cs.vertcat(x_error, 1 - (x[6:10].T @ x_ref[6:10])**2)
+        x_error = cs.vertcat(x_error, 1 - (x[6:10].T @ x_ref[6:10]) ** 2)
         x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
         u_error = u - u_ref
 
         ocp.model.p = cs.vertcat(x_ref, u_ref)
 
         # define cost with parametric reference
-        ocp.cost.cost_type = 'NONLINEAR_LS'
-        ocp.cost.cost_type_e = 'NONLINEAR_LS'
-        ocp.cost.cost_type_0 = 'NONLINEAR_LS'
+        ocp.cost.cost_type = "NONLINEAR_LS"
+        ocp.cost.cost_type_e = "NONLINEAR_LS"
+        ocp.cost.cost_type_0 = "NONLINEAR_LS"
 
         ocp.model.cost_y_expr_0 = cs.vertcat(x_error, u_error)
         ocp.model.cost_y_expr = cs.vertcat(x_error, u_error)
@@ -116,7 +116,9 @@ class SpacecraftWrenchMPC():
         ocp.cost.yref_e = np.zeros(ocp.model.cost_y_expr_e.shape[0])
 
         # Initialize parameters
-        p_0 = np.concatenate((x0, np.zeros(nu)))  # First step is error 0 since x_ref = x0
+        p_0 = np.concatenate(
+            (x0, np.zeros(nu))
+        )  # First step is error 0 since x_ref = x0
         ocp.parameter_values = p_0
 
         # set constraints on U
@@ -143,35 +145,35 @@ class SpacecraftWrenchMPC():
         if use_soft_constraints:
             # set weights slack variables for X constraints
             ocp.constraints.idxsbx = np.arange(len(ocp.constraints.idxbx))
-            ocp.cost.Zl = np.array([1e6]*len(ocp.constraints.idxsbx))
-            ocp.cost.Zu = np.array([1e6]*len(ocp.constraints.idxsbx))
-            ocp.cost.zl = np.array([0.0]*len(ocp.constraints.idxsbx))
-            ocp.cost.zu = np.array([0.0]*len(ocp.constraints.idxsbx))
+            ocp.cost.Zl = np.array([1e6] * len(ocp.constraints.idxsbx))
+            ocp.cost.Zu = np.array([1e6] * len(ocp.constraints.idxsbx))
+            ocp.cost.zl = np.array([0.0] * len(ocp.constraints.idxsbx))
+            ocp.cost.zu = np.array([0.0] * len(ocp.constraints.idxsbx))
 
             # set weights slack variables for X_e constraints
             ocp.constraints.idxsbx_e = np.arange(len(ocp.constraints.idxbx_e))
-            ocp.cost.Zl_e = np.array([1e6]*len(ocp.constraints.idxsbx_e))
-            ocp.cost.Zu_e = np.array([1e6]*len(ocp.constraints.idxsbx_e))
-            ocp.cost.zl_e = np.array([0.0]*len(ocp.constraints.idxsbx_e))
-            ocp.cost.zu_e = np.array([0.0]*len(ocp.constraints.idxsbx_e))
+            ocp.cost.Zl_e = np.array([1e6] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.Zu_e = np.array([1e6] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.zl_e = np.array([0.0] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.zu_e = np.array([0.0] * len(ocp.constraints.idxsbx_e))
 
         # set initial state
         ocp.constraints.x0 = x0
 
         # set options
-        ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM' #'FULL_CONDENSING_DAQP' # FULL_CONDENSING_QPOASES
+        ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"  #'FULL_CONDENSING_DAQP' # FULL_CONDENSING_QPOASES
         # PARTIAL_CONDENSING_HPIPM, FULL_CONDENSING_QPOASES, FULL_CONDENSING_HPIPM,
         # PARTIAL_CONDENSING_QPDUNES, PARTIAL_CONDENSING_OSQP, FULL_CONDENSING_DAQP
-        ocp.solver_options.hessian_approx = 'GAUSS_NEWTON' # 'GAUSS_NEWTON', 'EXACT'
-        ocp.solver_options.integrator_type = 'ERK'
+        ocp.solver_options.hessian_approx = "GAUSS_NEWTON"  # 'GAUSS_NEWTON', 'EXACT'
+        ocp.solver_options.integrator_type = "ERK"
         # ocp.solver_options.print_level = 1
-        use_RTI=True
+        use_RTI = True
         if use_RTI:
-            ocp.solver_options.nlp_solver_type = 'SQP_RTI' # SQP_RTI, SQP
+            ocp.solver_options.nlp_solver_type = "SQP_RTI"  # SQP_RTI, SQP
             ocp.solver_options.sim_method_num_stages = 4
             ocp.solver_options.sim_method_num_steps = 3
         else:
-            ocp.solver_options.nlp_solver_type = 'SQP' # SQP_RTI, SQP
+            ocp.solver_options.nlp_solver_type = "SQP"  # SQP_RTI, SQP
 
         ocp.solver_options.qp_solver_cond_N = N_horizon
 
@@ -191,10 +193,13 @@ class SpacecraftWrenchMPC():
 
         # Set reference, create zero reference
         if ref is None:
-            zero_ref = np.zeros(self.model.get_acados_model().x.size()[0] + self.model.get_acados_model().u.size()[0])
+            zero_ref = np.zeros(
+                self.model.get_acados_model().x.size()[0]
+                + self.model.get_acados_model().u.size()[0]
+            )
             zero_ref[6] = 1.0
 
-        for i in range(self.N+1):
+        for i in range(self.N + 1):
             if ref is not None:
                 # Assumed ref structure: (nx+nu) x N+1
                 # NOTE: last u_ref is not used
@@ -210,22 +215,22 @@ class SpacecraftWrenchMPC():
 
         status = ocp_solver.solve()
         if verbose:
-            self.ocp_solver.print_statistics() # encapsulates: stat = ocp_solver.get_stats("statistics")
+            self.ocp_solver.print_statistics()  # encapsulates: stat = ocp_solver.get_stats("statistics")
 
         if status != 0:
-            raise Exception(f'acados returned status {status}.')
+            raise Exception(f"acados returned status {status}.")
 
         N = self.N
         nx = self.model.get_acados_model().x.size()[0]
         nu = self.model.get_acados_model().u.size()[0]
 
-        simX = np.ndarray((N+1, nx))
+        simX = np.ndarray((N + 1, nx))
         simU = np.ndarray((N, nu))
 
         # get solution
         for i in range(N):
-            simX[i,:] = self.ocp_solver.get(i, "x")
-            simU[i,:] = self.ocp_solver.get(i, "u")
-        simX[N,:] = self.ocp_solver.get(N, "x")
+            simX[i, :] = self.ocp_solver.get(i, "x")
+            simU[i, :] = self.ocp_solver.get(i, "u")
+        simX[N, :] = self.ocp_solver.get(N, "x")
 
         return simU, simX
