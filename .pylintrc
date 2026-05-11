@@ -1,0 +1,34 @@
+[MASTER]
+disable=
+
+    invalid-name, # C0103
+    
+    missing-module-docstring, # C0114
+    missing-class-docstring, # C0115
+    missing-function-docstring, # C0116
+    line-too-long, # C0301
+    too-many-lines, # C0302
+
+    too-many-instance-attributes, # R0902
+    too-few-public-methods, # R0903
+    too-many-return-statements, # R0911
+    too-many-branches, # R0912
+    too-many-arguments, # R0913
+    too-many-locals,  # R0914
+    too-many-statements, # R0915
+    too-many-positional-arguments, # R0917
+
+    no-else-return, # R1705
+    no-else-raise, # R1720
+    no-else-break,  # R1723
+    no-else-continue,  # R1724
+
+    unnecessary-pass, # W0107
+    
+    fixme, # W0511
+
+    logging-fstring-interpolation,  # W1203
+    logging-format-interpolation,  # W1204
+    
+[FORMAT]
+max-line-length=88
