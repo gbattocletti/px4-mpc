@@ -69,7 +69,7 @@ class SpacecraftWrenchMPC:
 
         ocp.model = model
 
-        nx = model.x.size()[0]
+        # nx = model.x.size()[0]
         nu = model.u.size()[0]
 
         # set dimensions
@@ -233,7 +233,7 @@ class SpacecraftWrenchMPC:
             self.ocp_solver.print_statistics()
 
         if status != 0:
-            raise Exception(f"acados returned status {status}.")
+            raise RuntimeError(f"acados returned status {status}.")
 
         N = self.N
         nx = self.model.get_acados_model().x.size()[0]
