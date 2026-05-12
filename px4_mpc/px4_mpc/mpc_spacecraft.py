@@ -36,10 +36,8 @@ __author__ = "Pedro Roque, Jaeyoung Lim"
 __contact__ = "padr@kth.se, jalim@ethz.ch"
 
 import rclpy
-import time
 import numpy as np
 from rclpy.node import Node
-from rclpy.clock import Clock
 from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
@@ -75,13 +73,37 @@ class SpacecraftMPC(Node):
         super().__init__("spacecraft_mpc")
 
         # Get mode; rate, wrench, direct_allocation
-        self.mode = self.declare_parameter("mode", "wrench").value
+        self.mode = self.declare_parameter(
+            "mode",
+            "wrench",
+        ).value
         self.sitl = True
 
         # Get setpoint from rviz (true/false)
         self.setpoint_from_rviz = self.declare_parameter(
-            "setpoint_from_rviz", False
+            "setpoint_from_rviz",
+            False,
         ).value
+
+        # Select target mode for navigation (setpoint or trajectory)
+        # NOTE: setpoint not tested
+        self.target_mode = self.declare_parameter(
+            "target_mode",
+            "trajectory",
+        ).value
+        if self.target_mode not in ["setpoint", "trajectory"]:
+            raise ValueError(
+                f"Invalid target_mode: {self.target_mode}. Must be ",
+                "'setpoint' or 'trajectory'.",
+            )
+        if self.setpoint_from_rviz and self.target_mode == "trajectory":
+            self.get_logger().warn(
+                (
+                    "Trajectory target mode is not compatible with ",
+                    "setpoint_from_rviz. Switching to setpoint target mode.",
+                )
+            )
+            self.target_mode = "setpoint"
 
         # QoS profiles
         qos_profile_pub = QoSProfile(
@@ -131,25 +153,48 @@ class SpacecraftMPC(Node):
             self.model = SpacecraftDirectAllocationModel()
             self.mpc = SpacecraftDirectAllocationMPC(self.model)
 
-        self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0.0])
+        # State variables
         self.vehicle_local_position = np.array([0.0, 0.0, 0.0])
-        self.vehicle_angular_velocity = np.array([0.0, 0.0, 0.0])
-        self.vehicle_angular_velocity = np.array([0.0, 0.0, 0.0])
         self.vehicle_local_velocity = np.array([0.0, 0.0, 0.0])
-        self.setpoint_position = np.array([1.0, 0.0, 0.0])
+        self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0.0])
+        self.vehicle_angular_velocity = np.array([0.0, 0.0, 0.0])
+
+        # Setpoint variables
+        # NOTE: setpoint_velocity is currently ignored (see upstream repo)
+        self.setpoint_position = np.array([0.0, 0.0, 0.0])
+        self.setpoint_velocity = np.array([0.0, 0.0, 0.0])
         self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
         self.setpoint_omega = np.array([0.0, 0.0, 0.0])
         self.setpoint_ok = False
 
+        # Trajectory variables
+        self.trajectory_position = np.zeros((self.mpc.N + 1, 3))
+        self.trajectory_velocity = np.zeros((self.mpc.N + 1, 3))
+        self.trajectory_attitude = np.zeros((self.mpc.N + 1, 4))
+        self.trajectory_attitude[:, 0] = 1.0  # initialize with identity quaternions
+        self.trajectory_omega = np.zeros((self.mpc.N + 1, 3))
+        self.trajectory_ok = False
+
         # Set initial timestamps
-        self.vehicle_attitude_timestamp = -np.inf
         self.vehicle_local_position_timestamp = -np.inf
+        self.vehicle_local_velocity_timestamp = -np.inf
+        self.vehicle_attitude_timestamp = -np.inf
         self.vehicle_angular_velocity_timestamp = -np.inf
         self.vehicle_status_timestamp = -np.inf
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
+        """
+        Create subscribers to PX4 outputs, subscribers to setpoint or trajectory inputs,
+        and publisher for output commands.
+        """
         # Subscribe to both multiple status topics using the same callback. Depending on
         # the PX4 version, the right one will be used (but not multiple)
+        self.status_sub = self.create_subscription(
+            VehicleStatus,
+            "fmu/out/vehicle_status",
+            self.vehicle_status_callback,
+            qos_profile_sub,
+        )
         self.status_sub_v1 = self.create_subscription(
             VehicleStatus,
             "fmu/out/vehicle_status_v1",
@@ -168,13 +213,20 @@ class SpacecraftMPC(Node):
             self.vehicle_status_callback,
             qos_profile_sub,
         )
-        self.status_sub = self.create_subscription(
-            VehicleStatus,
-            "fmu/out/vehicle_status",
-            self.vehicle_status_callback,
+
+        # Subscribe to PX4 state topics
+        self.local_position_sub = self.create_subscription(
+            VehicleLocalPosition,  # NOTE: also includes velocity
+            "fmu/out/vehicle_local_position",
+            self.vehicle_local_position_callback,
             qos_profile_sub,
         )
-
+        self.local_position_sub_v1 = self.create_subscription(
+            VehicleLocalPosition,
+            "fmu/out/vehicle_local_position_v1",
+            self.vehicle_local_position_callback,
+            qos_profile_sub,
+        )
         self.attitude_sub = self.create_subscription(
             VehicleAttitude,
             "fmu/out/vehicle_attitude",
@@ -187,58 +239,86 @@ class SpacecraftMPC(Node):
             self.vehicle_angular_velocity_callback,
             qos_profile_sub,
         )
-        self.local_position_sub = self.create_subscription(
-            VehicleLocalPosition,
-            "fmu/out/vehicle_local_position",
-            self.vehicle_local_position_callback,
-            qos_profile_sub,
-        )
-        self.local_position_sub_v1 = self.create_subscription(
-            VehicleLocalPosition,
-            "fmu/out/vehicle_local_position_v1",
-            self.vehicle_local_position_callback,
-            qos_profile_sub,
-        )
 
+        # Subscribe to setpoint or trajectory topics
         if self.setpoint_from_rviz:
             self.set_pose_srv = self.create_service(
-                SetPose, "set_pose", self.add_set_pos_callback
+                SetPose,
+                "set_pose",
+                self.add_set_pos_callback,
             )
         else:
-            self.setpoint_pose_sub = self.create_subscription(
-                Odometry, "px4_mpc/setpoint_pose", self.get_setpoint_pose_callback, 0
-            )
-            # NOTE [PRAS]: I changed this because the test_setpoint.py doesnt seem to
-            # receive the namespace args and publish into topic without the namespace
-            self.setpoint_pose_sub = self.create_subscription(
-                Odometry,
-                "/px4_mpc/setpoint_pose",
-                self.get_setpoint_pose_callback,
-                0,
-            )
+            if self.target_mode == "setpoint":
+                self.setpoint_pose_sub = self.create_subscription(
+                    Odometry,
+                    "px4_mpc/setpoint_pose",
+                    self.get_setpoint_pose_callback,
+                    0,
+                )
+                # NOTE [PRAS]: I changed this because the test_setpoint.py doesnt seem
+                # to receive the namespace args and publish into topic without the
+                # namespace [# CHECKME: is this still an issue?]
+                # self.setpoint_pose_sub = self.create_subscription(
+                #     Odometry,
+                #     "/px4_mpc/setpoint_pose",
+                #     self.get_setpoint_pose_callback,
+                #     0,
+                # )
 
+            elif self.target_mode == "trajectory":
+                self.trajectory_sub = self.create_subscription(
+                    Path,
+                    "px4_mpc/reference_trajectory",
+                    self.get_reference_trajectory_callback,
+                    0,
+                )
+
+        # Create publishers
         self.publisher_offboard_mode = self.create_publisher(
-            OffboardControlMode, "fmu/in/offboard_control_mode", qos_profile_pub
-        )
-        self.publisher_rates_setpoint = self.create_publisher(
-            VehicleRatesSetpoint, "fmu/in/vehicle_rates_setpoint", qos_profile_pub
+            OffboardControlMode,
+            "fmu/in/offboard_control_mode",
+            qos_profile_pub,
         )
         self.publisher_direct_actuator = self.create_publisher(
-            ActuatorMotors, "fmu/in/actuator_motors", qos_profile_pub
+            ActuatorMotors,
+            "fmu/in/actuator_motors",
+            qos_profile_pub,
+        )
+        self.publisher_rates_setpoint = self.create_publisher(
+            VehicleRatesSetpoint,
+            "fmu/in/vehicle_rates_setpoint",
+            qos_profile_pub,
         )
         self.publisher_thrust_setpoint = self.create_publisher(
-            VehicleThrustSetpoint, "fmu/in/vehicle_thrust_setpoint", qos_profile_pub
+            VehicleThrustSetpoint,
+            "fmu/in/vehicle_thrust_setpoint",
+            qos_profile_pub,
         )
         self.publisher_torque_setpoint = self.create_publisher(
-            VehicleTorqueSetpoint, "fmu/in/vehicle_torque_setpoint", qos_profile_pub
+            VehicleTorqueSetpoint,
+            "fmu/in/vehicle_torque_setpoint",
+            qos_profile_pub,
         )
-        self.predicted_path_pub = self.create_publisher(
-            Path, "px4_mpc/predicted_path", 10
-        )
-        self.reference_pub = self.create_publisher(Marker, "px4_mpc/reference", 10)
 
+        # Create publisher for rviz visualization
+        self.predicted_path_pub = self.create_publisher(
+            Path,
+            "px4_mpc/predicted_path",
+            10,
+        )
+        self.reference_pub = self.create_publisher(
+            Marker,
+            "px4_mpc/reference",
+            10,
+        )
+
+        # Create odometry publisher for SITL visualization in rivz
         if self.sitl:
-            self.odom_pub = self.create_publisher(Odometry, "odom", qos_profile_pub)
+            self.odom_pub = self.create_publisher(
+                Odometry,
+                "odom",
+                qos_profile_pub,
+            )
         return
 
     def vehicle_attitude_callback(self, msg):
@@ -316,7 +396,7 @@ class SpacecraftMPC(Node):
         F_cmd = u_pred[0, 0:3]
         w_cmd = u_pred[0, 3:6]
 
-        # The PX4 uses normalized force input. Scaling with respect to the maximum force.
+        # The PX4 uses normalized force input. Scaling with respect to maximum force.
         F_scaling = 1 / (2 * 1.5)
         F_cmd *= F_scaling
 
@@ -333,7 +413,7 @@ class SpacecraftMPC(Node):
     def publish_wrench_setpoint(self, u_pred):
         # u_pred is [Fx, Fy, Tz]] in FLU frame
 
-        # The PX4 uses normalized wrench input. Scaling with respect to the maximum force and torque.
+        # The PX4 uses normalized wrench input. Scaling w.r.t. maximum force and torque.
         F_scaling = 1 / (2 * 1.5)
         T_scaling = 1 / (4 * 0.12 * 1.5)
         u_pred[0, 0] *= F_scaling
@@ -387,7 +467,6 @@ class SpacecraftMPC(Node):
         msg.twist.twist.angular.y = self.vehicle_angular_velocity[1]
         msg.twist.twist.angular.z = self.vehicle_angular_velocity[2]
         self.odom_pub.publish(msg)
-        return
 
     def check_data_validity(self):
         current_time = self.get_clock().now().nanoseconds / 1e9
@@ -400,7 +479,10 @@ class SpacecraftMPC(Node):
                 "Vehicle attitude data is too old. Skipping offboard control..."
             )
             self.get_logger().warn(
-                f"Current time: {current_time}, attitude timestamp: {self.vehicle_attitude_timestamp}"
+                (
+                    f"Current time: {current_time}, attitude ",
+                    f"timestamp: {self.vehicle_attitude_timestamp}",
+                )
             )
             ret_val = False
 
@@ -498,36 +580,28 @@ class SpacecraftMPC(Node):
                     self.vehicle_angular_velocity[2],
                 ]
             ).reshape(13, 1)
-            ref = np.concatenate(
-                (
-                    self.setpoint_position,  # position
-                    np.zeros(3),  # velocity
-                    self.setpoint_attitude,  # attitude
-                    self.setpoint_omega,  # angular velocity
-                    np.zeros(3),
-                ),
-                axis=0,
-            )  # inputs reference (F, torque)
 
-            print(self.setpoint_omega)
+            # Build reference depending on target_type (setpoint vs trajectory)
+            if self.target_mode == "setpoint" and self.setpoint_ok:
+                ref = np.concatenate(
+                    (
+                        self.setpoint_position,  # position
+                        self.setpoint_velocity,  # velocity
+                        self.setpoint_attitude,  # attitude
+                        self.setpoint_omega,  # angular velocity
+                        np.zeros(3),  # control input
+                    ),
+                    axis=0,
+                )
+                ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
 
-            ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
-
-            quats, ang_vels = self.forward_propagate_attitude(
-                self.setpoint_attitude,
-                self.setpoint_omega[2],
-                self.mpc.Tf / self.mpc.N,  # MPC timestep
-                self.mpc.N,
-            )
-
-            N_horizon = self.mpc.N + 1
-            ref = np.zeros((16, N_horizon))
-            for i in range(N_horizon):
-                ref[0:3, i] = self.setpoint_position
-                ref[3:6, i] = np.zeros(3)
-                ref[6:10, i] = quats[i]
-                ref[10:13, i] = ang_vels[i]
-                ref[13:16, i] = 0.0  # input reference
+            elif self.target_mode == "trajectory" and self.trajectory_ok:
+                ref = np.zeros((16, self.mpc.N + 1))  # initialize shape
+                ref[:, 0:3] = self.trajectory_position
+                ref[:, 3:6] = self.trajectory_velocity
+                ref[:, 6:10] = self.trajectory_attitude
+                ref[:, 10:13] = self.trajectory_omega
+                # input reference (columns 13:16) are left set to 0
 
         elif self.mode == "direct_allocation":
             x0 = np.array(
@@ -618,6 +692,29 @@ class SpacecraftMPC(Node):
 
         self.setpoint_ok = True
 
+    def get_reference_trajectory_callback(self, msg):
+        """
+        Extract reference trajectory from the received message. The trajectory has
+        shape (N+1, 13) with rows corresponding to time steps and columns corresponding
+        to state variables.
+        """
+        # TODO: extract also time dimension (along horizon)
+        self.trajectory_position[0] = msg.pose.pose.position.x
+        self.trajectory_position[1] = msg.pose.pose.position.y
+        self.trajectory_position[2] = msg.pose.pose.position.z
+        self.trajectory_velocity[0] = msg.twist.twist.linear.x
+        self.trajectory_velocity[1] = msg.twist.twist.linear.y
+        self.trajectory_velocity[2] = msg.twist.twist.linear.z
+        self.trajectory_attitude[0] = msg.pose.pose.orientation.w
+        self.trajectory_attitude[1] = msg.pose.pose.orientation.x
+        self.trajectory_attitude[2] = msg.pose.pose.orientation.y
+        self.trajectory_attitude[3] = msg.pose.pose.orientation.z
+        self.trajectory_omega[0] = msg.twist.twist.angular.x
+        self.trajectory_omega[1] = msg.twist.twist.angular.y
+        self.trajectory_omega[2] = msg.twist.twist.angular.z
+
+        self.trajectory_ok = True
+
     def vector2PoseMsg(self, frame_id, position, attitude):
         pose_msg = PoseStamped()
         pose_msg.header.stamp = self.get_clock().now().to_msg()
@@ -632,10 +729,12 @@ class SpacecraftMPC(Node):
         return pose_msg
 
     def forward_propagate_attitude(self, q0, omega_z, dt, N):
-        """Propagate yaw-only attitude over N steps.
+        """
+        Propagate yaw-only attitude over N steps.
 
-        Returns (N+1) x 4 array of quaternions and (N+1) x 3 array of angular velocities.
-        Angular rate is constant (no torque prediction in the planner horizon).
+        Returns (N+1) x 4 array of quaternions and (N+1) x 3 array of angular
+        velocities. Angular rate is constant (no torque prediction in the planner
+        horizon).
         """
         quats = np.zeros((N + 1, 4))
         ang_vels = np.zeros((N + 1, 3))
