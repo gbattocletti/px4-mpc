@@ -35,13 +35,14 @@ from acados_template import AcadosModel
 import casadi as ca
 import numpy as np
 
-class SpacecraftWrenchModel():
+
+class SpacecraftWrenchModel:
     def __init__(self):
-        self.name = 'spacecraft_wrench_model'
+        self.name = "spacecraft_wrench_model"
 
         # constants
         self.mass = 17.8
-        self.inertia = np.diag([0.315]*3)
+        self.inertia = np.diag([0.315] * 3)
         self.max_thrust = 2 * 1.5
         self.max_torque = 4 * 0.12 * 1.5
 
@@ -53,18 +54,33 @@ class SpacecraftWrenchModel():
 
     def create_model(self):
         def skew_symmetric(v):
-            return ca.vertcat(ca.horzcat(0, -v[0], -v[1], -v[2]),
-                              ca.horzcat(v[0], 0, v[2], -v[1]),
-                              ca.horzcat(v[1], -v[2], 0, v[0]),
-                              ca.horzcat(v[2], v[1], -v[0], 0))
+            return ca.vertcat(
+                ca.horzcat(0, -v[0], -v[1], -v[2]),
+                ca.horzcat(v[0], 0, v[2], -v[1]),
+                ca.horzcat(v[1], -v[2], 0, v[0]),
+                ca.horzcat(v[2], v[1], -v[0], 0),
+            )
 
         def q_to_rot_mat(q):
             qw, qx, qy, qz = q[0], q[1], q[2], q[3]
 
             rot_mat = ca.vertcat(
-                ca.horzcat(1 - 2 * (qy ** 2 + qz ** 2), 2 * (qx * qy - qw * qz), 2 * (qx * qz + qw * qy)),
-                ca.horzcat(2 * (qx * qy + qw * qz), 1 - 2 * (qx ** 2 + qz ** 2), 2 * (qy * qz - qw * qx)),
-                ca.horzcat(2 * (qx * qz - qw * qy), 2 * (qy * qz + qw * qx), 1 - 2 * (qx ** 2 + qy ** 2)))
+                ca.horzcat(
+                    1 - 2 * (qy**2 + qz**2),
+                    2 * (qx * qy - qw * qz),
+                    2 * (qx * qz + qw * qy),
+                ),
+                ca.horzcat(
+                    2 * (qx * qy + qw * qz),
+                    1 - 2 * (qx**2 + qz**2),
+                    2 * (qy * qz - qw * qx),
+                ),
+                ca.horzcat(
+                    2 * (qx * qz - qw * qy),
+                    2 * (qy * qz + qw * qx),
+                    1 - 2 * (qx**2 + qy**2),
+                ),
+            )
 
             return rot_mat
 
@@ -74,32 +90,33 @@ class SpacecraftWrenchModel():
             return ca.mtimes(rot_mat, v)
 
         # set up states & controls
-        p      = ca.MX.sym('p', 3)
-        v      = ca.MX.sym('v', 3)
-        q      = ca.MX.sym('q', 4)
-        w      = ca.MX.sym('w', 3)
+        p = ca.MX.sym("p", 3)
+        v = ca.MX.sym("v", 3)
+        q = ca.MX.sym("q", 4)
+        w = ca.MX.sym("w", 3)
 
         self.x = ca.vertcat(p, v, q, w)
-        self.u = ca.MX.sym('u', 6)
+        self.u = ca.MX.sym("u", 6)
 
         F = self.u[0:3]
         tau = self.u[3:6]
 
         # xdot
-        p_dot      = ca.MX.sym('p_dot', 3)
-        v_dot      = ca.MX.sym('v_dot', 3)
-        q_dot      = ca.MX.sym('q_dot', 4)
-        w_dot      = ca.MX.sym('w_dot', 3)
+        p_dot = ca.MX.sym("p_dot", 3)
+        v_dot = ca.MX.sym("v_dot", 3)
+        q_dot = ca.MX.sym("q_dot", 4)
+        w_dot = ca.MX.sym("w_dot", 3)
 
         self.xdot = ca.vertcat(p_dot, v_dot, q_dot, w_dot)
 
         # dynamics
-        self.f_expl = ca.vertcat(v,
-                                 v_dot_q(F, q) / self.mass,
-                                 1.0 / 2 * ca.mtimes(skew_symmetric(w), q),
-                                 ca.inv(self.inertia) @ (tau - ca.cross(w, self.inertia @ w))
-                                 )
-        self.dynamics = ca.Function('f', [self.x, self.u], [self.f_expl])
+        self.f_expl = ca.vertcat(
+            v,
+            v_dot_q(F, q) / self.mass,
+            1.0 / 2 * ca.mtimes(skew_symmetric(w), q),
+            ca.inv(self.inertia) @ (tau - ca.cross(w, self.inertia @ w)),
+        )
+        self.dynamics = ca.Function("f", [self.x, self.u], [self.f_expl])
         return
 
     def get_acados_model(self) -> AcadosModel:
@@ -148,10 +165,10 @@ class SpacecraftWrenchModel():
 
     def sym_linearization(self):
         # --- symbolic variables ---
-        x_ref = ca.MX.sym('x_ref', 13)
-        u_ref = ca.MX.sym('u_ref', 6)
-        x_err = ca.MX.sym('x_err', 12)
-        u = ca.MX.sym('u', 6)
+        x_ref = ca.MX.sym("x_ref", 13)
+        u_ref = ca.MX.sym("u_ref", 6)
+        x_err = ca.MX.sym("x_err", 12)
+        u = ca.MX.sym("u", 6)
 
         # --- reconstruct full state from error ---
         dp = x_err[0:3]
@@ -185,9 +202,11 @@ class SpacecraftWrenchModel():
         xerr_dot = ca.vertcat(dpdot, dvdot, dphi_dot, dwdot)
 
         # --- Jacobians ---
-        A_fun = ca.Function('A_fun', [x_err, u, x_ref, u_ref],
-                            [ca.jacobian(xerr_dot, x_err)])
-        B_fun = ca.Function('B_fun', [x_err, u, x_ref, u_ref],
-                            [ca.jacobian(xerr_dot, u)])
+        A_fun = ca.Function(
+            "A_fun", [x_err, u, x_ref, u_ref], [ca.jacobian(xerr_dot, x_err)]
+        )
+        B_fun = ca.Function(
+            "B_fun", [x_err, u, x_ref, u_ref], [ca.jacobian(xerr_dot, u)]
+        )
 
         return A_fun, B_fun
