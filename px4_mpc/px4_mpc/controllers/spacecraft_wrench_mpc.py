@@ -84,24 +84,23 @@ class SpacecraftWrenchMPC:
         ocp.cost.W = np.diag(Q_mat + R_mat)
         ocp.cost.W_e = 20 * np.diag(Q_mat)
 
-        # References:
+        # Define symbolic variables for the references
         x_ref = cs.MX.sym("x_ref", (13, 1))
         u_ref = cs.MX.sym("u_ref", (3, 1))
 
-        # Calculate errors
-        # x : p,v,q,w               , R9 x SO(3)
-        # u : Fx,Fy,Fz    , R3
+        # Get state and control variables from the model
+        # x : p, v, q, w,  R9 x SO(3) = R13
+        # u : Fx, Fy, Tz, R3
         x = ocp.model.x
         u = ocp.model.u
 
-        q_error_v = quat_error_v_cs(x[6:10], x_ref[6:10])
-
-        x_error = x[0:3] - x_ref[0:3]
-        x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
-        x_error = cs.vertcat(x_error, q_error_v)
-        x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
+        # Compute state error
+        x_error = cs.vertcat(
+            x[0:6] - x_ref[0:6],  # position and velocity
+            quat_error_v_cs(x[6:10], x_ref[6:10]),  # attitude
+            x[10:13] - x_ref[10:13],  # angular velocity
+        )
         u_error = u - u_ref
-
         ocp.model.p = cs.vertcat(x_ref, u_ref)
 
         # define cost with parametric reference
