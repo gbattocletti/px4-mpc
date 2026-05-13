@@ -37,7 +37,7 @@ __contact__ = "padr@kth.se, jalim@ethz.ch"
 
 import numpy as np
 import rclpy
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Transform, Twist
 from nav_msgs.msg import Odometry, Path
 from px4_msgs.msg import (
     ActuatorMotors,
@@ -57,7 +57,7 @@ from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
 )
-from trajectory_msgs.msg import MultiDOFJointTrajectory
+from trajectory_msgs.msg import MultiDOFJointTrajectory, MultiDOFJointTrajectoryPoint
 from visualization_msgs.msg import Marker
 
 from mpc_msgs.srv import SetPose
@@ -691,7 +691,7 @@ class SpacecraftMPC(Node):
 
         self.setpoint_ok = True
 
-    def get_reference_trajectory_callback(self, msg: MultiDOFJointTrajectory):
+    def get_reference_trajectory_callback(self, msg: MultiDOFJointTrajectory) -> None:
         """
         Extract reference trajectory from the received message. The trajectory has
         shape (N+1, 13) with rows corresponding to time steps and columns corresponding
@@ -700,21 +700,53 @@ class SpacecraftMPC(Node):
         Args:
             msg(MultiDOFJointTrajectory): message containing the reference trajectory.
                 Each point in the trajectory is a MultiDOFJointTrajectoryPoint.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: if the number of points in the trajectory does not match
+                the expected number (N+1)
+            ValueError: if any point is missing transforms or velocities.
         """
-        # TODO: extract also time dimension (along horizon)
-        self.trajectory_position[0] = msg.pose.pose.position.x
-        self.trajectory_position[1] = msg.pose.pose.position.y
-        self.trajectory_position[2] = msg.pose.pose.position.z
-        self.trajectory_velocity[0] = msg.twist.twist.linear.x
-        self.trajectory_velocity[1] = msg.twist.twist.linear.y
-        self.trajectory_velocity[2] = msg.twist.twist.linear.z
-        self.trajectory_attitude[0] = msg.pose.pose.orientation.w
-        self.trajectory_attitude[1] = msg.pose.pose.orientation.x
-        self.trajectory_attitude[2] = msg.pose.pose.orientation.y
-        self.trajectory_attitude[3] = msg.pose.pose.orientation.z
-        self.trajectory_omega[0] = msg.twist.twist.angular.x
-        self.trajectory_omega[1] = msg.twist.twist.angular.y
-        self.trajectory_omega[2] = msg.twist.twist.angular.z
+        # Validate input
+        n_points = len(msg.points)
+        if n_points != self.mpc.N + 1:
+            raise ValueError(
+                f"Received trajectory with {n_points} points, expected "
+                f"{self.mpc.N + 1}. Truncating or padding with the last point."
+            )
+
+        # Iterate over trajectory points
+        for i in range(n_points):
+
+            # Validate point
+            point: MultiDOFJointTrajectoryPoint = msg.points[i]
+            if not point.transforms or not point.velocities:
+                raise ValueError(
+                    f"Trajectory point {i} is missing transforms or velocities."
+                )
+
+            # Extract data from point
+            pose: Transform = point.transforms[0]
+            attitude: Twist = point.velocities[0]
+
+            self.trajectory_position[0, i] = pose.translation.x
+            self.trajectory_position[1, i] = pose.translation.y
+            self.trajectory_position[2, i] = pose.translation.z
+
+            self.trajectory_attitude[0, i] = pose.rotation.w
+            self.trajectory_attitude[1, i] = pose.rotation.x
+            self.trajectory_attitude[2, i] = pose.rotation.y
+            self.trajectory_attitude[3, i] = pose.rotation.z
+
+            self.trajectory_velocity[0, i] = attitude.linear.x
+            self.trajectory_velocity[1, i] = attitude.linear.y
+            self.trajectory_velocity[2, i] = attitude.linear.z
+
+            self.trajectory_omega[0, i] = attitude.angular.x
+            self.trajectory_omega[1, i] = attitude.angular.y
+            self.trajectory_omega[2, i] = attitude.angular.z
 
         self.trajectory_ok = True
 
