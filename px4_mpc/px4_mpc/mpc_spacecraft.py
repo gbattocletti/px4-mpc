@@ -35,33 +35,32 @@
 __author__ = "Pedro Roque, Jaeyoung Lim"
 __contact__ = "padr@kth.se, jalim@ethz.ch"
 
-import rclpy
 import numpy as np
+import rclpy
+from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry, Path
+from px4_msgs.msg import (
+    ActuatorMotors,
+    OffboardControlMode,
+    VehicleAngularVelocity,
+    VehicleAttitude,
+    VehicleLocalPosition,
+    VehicleRatesSetpoint,
+    VehicleStatus,
+    VehicleThrustSetpoint,
+    VehicleTorqueSetpoint,
+)
 from rclpy.node import Node
 from rclpy.qos import (
+    QoSDurabilityPolicy,
+    QoSHistoryPolicy,
     QoSProfile,
     QoSReliabilityPolicy,
-    QoSHistoryPolicy,
-    QoSDurabilityPolicy,
 )
-
-from nav_msgs.msg import Path, Odometry
-from geometry_msgs.msg import PoseStamped
+from trajectory_msgs.msg import MultiDOFJointTrajectory
 from visualization_msgs.msg import Marker
 
-from px4_msgs.msg import OffboardControlMode
-from px4_msgs.msg import VehicleStatus
-from px4_msgs.msg import VehicleAttitude
-from px4_msgs.msg import VehicleAngularVelocity
-from px4_msgs.msg import VehicleLocalPosition
-from px4_msgs.msg import VehicleRatesSetpoint
-from px4_msgs.msg import ActuatorMotors
-from px4_msgs.msg import VehicleTorqueSetpoint
-from px4_msgs.msg import VehicleThrustSetpoint
-
 from mpc_msgs.srv import SetPose
-
-from nav_msgs.msg import Odometry
 
 DATA_VALIDITY_STREAM = 0.5  # seconds, threshold for (pos,att,vel) messages
 DATA_VALIDITY_STATUS = 2.0  # seconds, threshold for status message
@@ -131,23 +130,23 @@ class SpacecraftMPC(Node):
 
         # Create Spacecraft and controller objects
         if self.mode == "rate":
-            from px4_mpc.models.spacecraft_rate_model import SpacecraftRateModel
             from px4_mpc.controllers.spacecraft_rate_mpc import SpacecraftRateMPC
+            from px4_mpc.models.spacecraft_rate_model import SpacecraftRateModel
 
             self.model = SpacecraftRateModel()
             self.mpc = SpacecraftRateMPC(self.model)
         elif self.mode == "wrench":
-            from px4_mpc.models.spacecraft_wrench_model import SpacecraftWrenchModel
             from px4_mpc.controllers.spacecraft_wrench_mpc import SpacecraftWrenchMPC
+            from px4_mpc.models.spacecraft_wrench_model import SpacecraftWrenchModel
 
             self.model = SpacecraftWrenchModel()
             self.mpc = SpacecraftWrenchMPC(self.model)
         elif self.mode == "direct_allocation":
-            from px4_mpc.models.spacecraft_direct_allocation_model import (
-                SpacecraftDirectAllocationModel,
-            )
             from px4_mpc.controllers.spacecraft_direct_allocation_mpc import (
                 SpacecraftDirectAllocationMPC,
+            )
+            from px4_mpc.models.spacecraft_direct_allocation_model import (
+                SpacecraftDirectAllocationModel,
             )
 
             self.model = SpacecraftDirectAllocationModel()
@@ -267,7 +266,7 @@ class SpacecraftMPC(Node):
 
             elif self.target_mode == "trajectory":
                 self.trajectory_sub = self.create_subscription(
-                    Path,
+                    MultiDOFJointTrajectory,
                     "px4_mpc/reference_trajectory",
                     self.get_reference_trajectory_callback,
                     0,
@@ -692,11 +691,15 @@ class SpacecraftMPC(Node):
 
         self.setpoint_ok = True
 
-    def get_reference_trajectory_callback(self, msg):
+    def get_reference_trajectory_callback(self, msg: MultiDOFJointTrajectory):
         """
         Extract reference trajectory from the received message. The trajectory has
         shape (N+1, 13) with rows corresponding to time steps and columns corresponding
         to state variables.
+
+        Args:
+            msg(MultiDOFJointTrajectory): message containing the reference trajectory.
+                Each point in the trajectory is a MultiDOFJointTrajectoryPoint.
         """
         # TODO: extract also time dimension (along horizon)
         self.trajectory_position[0] = msg.pose.pose.position.x
