@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
-import rclpy
-from rclpy.node import Node
-from rclpy.clock import Clock
-from geometry_msgs.msg import PoseStamped
-import numpy as np
 import time
+
+import numpy as np
+import rclpy
+from geometry_msgs.msg import PoseStamped
+from rclpy.clock import Clock
+from rclpy.node import Node
+
 
 class SetpointPublisher(Node):
     def __init__(self):
-        super().__init__('setpoint_publisher')
+        super().__init__("setpoint_publisher")
 
-        self.namespace = self.declare_parameter('namespace', '').value
-        self.sitl = self.declare_parameter('hardware', False).value
-        self.namespace_prefix = f'/{self.namespace}' if self.namespace else ''
+        self.namespace = self.declare_parameter("namespace", "").value
+        self.sitl = self.declare_parameter("hardware", False).value
+        self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
-        self.publisher_ = self.create_publisher(PoseStamped, f'{self.namespace_prefix}/px4_mpc/setpoint_pose', 10)
+        self.publisher_ = self.create_publisher(
+            PoseStamped, f"{self.namespace_prefix}/setpoint_pose", 10
+        )
         self.timer_period = 0.01  # seconds
-        time.sleep(5) # Give time for all inits...
+        time.sleep(5)  # Give time for all inits...
         self.counter = 0
 
         # Get test setpoints data - move to param files later
@@ -43,7 +47,7 @@ class SetpointPublisher(Node):
     def timer_callback(self):
         x, y, z, qx, qy, qz, qw = self.setpoints[self.index]
         pose = PoseStamped()
-        pose.header.frame_id = 'mocap'
+        pose.header.frame_id = "mocap"
         pose.header.stamp = Clock().now().to_msg()
         pose.pose.position.x = x
         pose.pose.position.y = y
@@ -73,5 +77,5 @@ def main(args=None):
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

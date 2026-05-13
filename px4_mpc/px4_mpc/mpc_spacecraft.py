@@ -251,7 +251,7 @@ class SpacecraftMPC(Node):
             if self.target_mode == "setpoint":
                 self.setpoint_pose_sub = self.create_subscription(
                     Odometry,
-                    "px4_mpc/setpoint_pose",
+                    "setpoint_pose",
                     self.get_setpoint_pose_callback,
                     0,
                 )
@@ -260,7 +260,7 @@ class SpacecraftMPC(Node):
                 # namespace [# CHECKME: is this still an issue?]
                 # self.setpoint_pose_sub = self.create_subscription(
                 #     Odometry,
-                #     "/px4_mpc/setpoint_pose",
+                #     "/setpoint_pose",
                 #     self.get_setpoint_pose_callback,
                 #     0,
                 # )
@@ -268,7 +268,7 @@ class SpacecraftMPC(Node):
             elif self.target_mode == "trajectory":
                 self.trajectory_sub = self.create_subscription(
                     MultiDOFJointTrajectory,
-                    "px4_mpc/reference_trajectory",
+                    "reference_trajectory",
                     self.get_reference_trajectory_callback,
                     0,
                 )
