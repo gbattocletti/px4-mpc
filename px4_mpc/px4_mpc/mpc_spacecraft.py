@@ -694,9 +694,8 @@ class SpacecraftMPC(Node):
 
     def get_reference_trajectory_callback(self, msg: MultiDOFJointTrajectory) -> None:
         """
-        Extract reference trajectory from the received message. The trajectory has
-        shape (N+1, 13) with rows corresponding to time steps and columns corresponding
-        to state variables.
+        Extract reference trajectory from the received message. The trajectory is
+        composed by a sequence of N+1 MultiDOFJointTrajectoryPoint objects.
 
         Args:
             msg(MultiDOFJointTrajectory): message containing the reference trajectory.
