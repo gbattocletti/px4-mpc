@@ -535,7 +535,7 @@ class SpacecraftMPC(Node):
             offboard_msg.thrust_and_torque = True
         self.publisher_offboard_mode.publish(offboard_msg)
 
-        # Set state and references for each MPC
+        # Set state and references for each MPC mode
         if self.mode == "rate":
             x0 = np.array(
                 [
@@ -595,7 +595,7 @@ class SpacecraftMPC(Node):
                 ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
 
             elif self.target_mode == "trajectory" and self.trajectory_ok:
-                ref = np.zeros((16, self.mpc.N + 1))  # initialize shape
+                ref = np.zeros((self.mpc.N + 1, 16))  # initialize reference array
                 ref[:, 0:3] = self.trajectory_position
                 ref[:, 3:6] = self.trajectory_velocity
                 ref[:, 6:10] = self.trajectory_attitude
@@ -626,10 +626,10 @@ class SpacecraftMPC(Node):
                     np.zeros(3),  # velocity
                     self.setpoint_attitude,  # attitude
                     np.zeros(3),  # angular velocity
-                    np.zeros(4),
+                    np.zeros(4),  # inputs reference (u1, ..., u4) for 2D platform
                 ),
                 axis=0,
-            )  # inputs reference (u1, ..., u4) for 2D platform
+            )
             ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
         else:
             raise ValueError(f"Invalid mode: {self.mode}")
