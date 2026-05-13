@@ -92,14 +92,14 @@ class SpacecraftMPC(Node):
         ).value
         if self.target_mode not in ["setpoint", "trajectory"]:
             raise ValueError(
-                f"Invalid target_mode: {self.target_mode}. Must be ",
-                "'setpoint' or 'trajectory'.",
+                f"Invalid target_mode: {self.target_mode}. Must be "
+                "'setpoint' or 'trajectory'."
             )
         if self.setpoint_from_rviz and self.target_mode == "trajectory":
             self.get_logger().warn(
                 (
-                    "Trajectory target mode is not compatible with ",
-                    "setpoint_from_rviz. Switching to setpoint target mode.",
+                    "Trajectory target mode is not compatible with "
+                    "setpoint_from_rviz. Switching to setpoint target mode."
                 )
             )
             self.target_mode = "setpoint"
@@ -480,8 +480,8 @@ class SpacecraftMPC(Node):
             )
             self.get_logger().warn(
                 (
-                    f"Current time: {current_time}, attitude ",
-                    f"timestamp: {self.vehicle_attitude_timestamp}",
+                    f"Current time: {current_time}, attitude "
+                    f"timestamp: {self.vehicle_attitude_timestamp}"
                 )
             )
             ret_val = False
