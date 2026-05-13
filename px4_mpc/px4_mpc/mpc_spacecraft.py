@@ -167,11 +167,12 @@ class SpacecraftMPC(Node):
         self.setpoint_ok = False
 
         # Trajectory variables
-        self.trajectory_position = np.zeros((self.mpc.N + 1, 3))
-        self.trajectory_velocity = np.zeros((self.mpc.N + 1, 3))
-        self.trajectory_attitude = np.zeros((self.mpc.N + 1, 4))
-        self.trajectory_attitude[:, 0] = 1.0  # initialize with identity quaternions
-        self.trajectory_omega = np.zeros((self.mpc.N + 1, 3))
+        # rows: data, columns: time steps (same convention as in mpc)
+        self.trajectory_position = np.zeros((3, self.mpc.N + 1))
+        self.trajectory_velocity = np.zeros((3, self.mpc.N + 1))
+        self.trajectory_attitude = np.zeros((4, self.mpc.N + 1))
+        self.trajectory_attitude[0, :] = 1.0  # initialize with identity quaternions
+        self.trajectory_omega = np.zeros((3, self.mpc.N + 1))
         self.trajectory_ok = False
 
         # Set initial timestamps
@@ -595,12 +596,12 @@ class SpacecraftMPC(Node):
                 ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
 
             elif self.target_mode == "trajectory" and self.trajectory_ok:
-                ref = np.zeros((self.mpc.N + 1, 16))  # initialize reference array
-                ref[:, 0:3] = self.trajectory_position
-                ref[:, 3:6] = self.trajectory_velocity
-                ref[:, 6:10] = self.trajectory_attitude
-                ref[:, 10:13] = self.trajectory_omega
-                # input reference (columns 13:16) are left set to 0
+                ref = np.zeros((16, self.mpc.N + 1))  # initialize reference array
+                ref[0:3, :] = self.trajectory_position
+                ref[3:6, :] = self.trajectory_velocity
+                ref[6:10, :] = self.trajectory_attitude
+                ref[10:13, :] = self.trajectory_omega
+                # input reference (rows 13:16) are left set to 0
 
         elif self.mode == "direct_allocation":
             x0 = np.array(
@@ -712,10 +713,11 @@ class SpacecraftMPC(Node):
         # Validate input
         n_points = len(msg.points)
         if n_points != self.mpc.N + 1:
-            raise ValueError(
+            self.get_logger().error(
                 f"Received trajectory with {n_points} points, expected "
-                f"{self.mpc.N + 1}. Truncating or padding with the last point."
+                f"{self.mpc.N + 1}. Ignoring message."
             )
+            return
 
         # Iterate over trajectory points
         for i in range(n_points):
@@ -723,13 +725,14 @@ class SpacecraftMPC(Node):
             # Validate point
             point: MultiDOFJointTrajectoryPoint = msg.points[i]
             if not point.transforms or not point.velocities:
-                raise ValueError(
+                self.get_logger().error(
                     f"Trajectory point {i} is missing transforms or velocities."
                 )
+                return
 
             # Extract data from point
             pose: Transform = point.transforms[0]
-            attitude: Twist = point.velocities[0]
+            twist: Twist = point.velocities[0]
 
             self.trajectory_position[0, i] = pose.translation.x
             self.trajectory_position[1, i] = pose.translation.y
@@ -740,13 +743,13 @@ class SpacecraftMPC(Node):
             self.trajectory_attitude[2, i] = pose.rotation.y
             self.trajectory_attitude[3, i] = pose.rotation.z
 
-            self.trajectory_velocity[0, i] = attitude.linear.x
-            self.trajectory_velocity[1, i] = attitude.linear.y
-            self.trajectory_velocity[2, i] = attitude.linear.z
+            self.trajectory_velocity[0, i] = twist.linear.x
+            self.trajectory_velocity[1, i] = twist.linear.y
+            self.trajectory_velocity[2, i] = twist.linear.z
 
-            self.trajectory_omega[0, i] = attitude.angular.x
-            self.trajectory_omega[1, i] = attitude.angular.y
-            self.trajectory_omega[2, i] = attitude.angular.z
+            self.trajectory_omega[0, i] = twist.angular.x
+            self.trajectory_omega[1, i] = twist.angular.y
+            self.trajectory_omega[2, i] = twist.angular.z
 
         self.trajectory_ok = True
 
