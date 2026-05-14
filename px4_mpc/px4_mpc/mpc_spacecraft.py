@@ -581,7 +581,7 @@ class SpacecraftMPC(Node):
                 ]
             ).reshape(13, 1)
 
-            # Build reference depending on target_type (setpoint vs trajectory)
+            # Build reference depending on target_mode (setpoint vs trajectory)
             if self.target_mode == "setpoint" and self.setpoint_ok:
                 ref = np.concatenate(
                     (
@@ -602,6 +602,16 @@ class SpacecraftMPC(Node):
                 ref[6:10, :] = self.trajectory_attitude
                 ref[10:13, :] = self.trajectory_omega
                 # input reference (rows 13:16) are left set to 0
+
+            else:
+                # If the reference is not ok, MPC solution is skipped
+                self.get_logger().warn(
+                    "No valid reference available yet "
+                    f"(target_mode={self.target_mode}, setpoint_ok={self.setpoint_ok}, "
+                    f"trajectory_ok={self.trajectory_ok}). Skipping offboard control.",
+                    throttle_duration_sec=1.0,
+                )
+                return
 
         elif self.mode == "direct_allocation":
             x0 = np.array(
@@ -709,6 +719,9 @@ class SpacecraftMPC(Node):
                 the expected number (N+1)
             ValueError: if any point is missing transforms or velocities.
         """
+        # Debug setting (for development)
+        DEBUG = True
+
         # Validate input
         n_points = len(msg.points)
         if n_points != self.mpc.N + 1:
@@ -751,6 +764,14 @@ class SpacecraftMPC(Node):
             self.trajectory_omega[2, i] = twist.angular.z
 
         self.trajectory_ok = True
+
+        # Print debug info
+        if DEBUG is True:
+            self.get_logger().info(
+                f"Trajectory received: pos[:, 0]={self.trajectory_position[:, 0]}, "
+                f"att[:, 0]={self.trajectory_attitude[:, 0]}",
+                throttle_duration_sec=1.0,
+            )
 
     def vector2PoseMsg(self, frame_id, position, attitude):
         pose_msg = PoseStamped()
