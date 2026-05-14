@@ -308,7 +308,7 @@ class SpacecraftMPC(Node):
         )
         self.reference_pub = self.create_publisher(
             Marker,
-            "px4_mpc/reference",
+            "px4_mpc/reference_setpoint",  # TODO: rename to px4_mpc/reference_setpoint
             10,
         )
 
@@ -316,7 +316,7 @@ class SpacecraftMPC(Node):
         if self.sitl:
             self.odom_pub = self.create_publisher(
                 Odometry,
-                "odom",
+                "odom",  # TODO: rename to px4_mpc/odometry
                 qos_profile_pub,
             )
         return
