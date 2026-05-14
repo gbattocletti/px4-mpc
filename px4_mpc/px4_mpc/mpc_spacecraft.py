@@ -687,7 +687,7 @@ class SpacecraftMPC(Node):
         self.setpoint_attitude[3] = request.pose.orientation.z
         return response
 
-    def get_setpoint_pose_callback(self, msg):
+    def get_setpoint_pose_callback(self, msg: Odometry) -> None:
         self.setpoint_position[0] = msg.pose.pose.position.x
         self.setpoint_position[1] = msg.pose.pose.position.y
         self.setpoint_position[2] = msg.pose.pose.position.z

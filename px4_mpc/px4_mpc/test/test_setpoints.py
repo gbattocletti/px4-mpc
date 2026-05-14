@@ -3,7 +3,7 @@ import time
 
 import numpy as np
 import rclpy
-from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
 from rclpy.clock import Clock
 from rclpy.node import Node
 
@@ -17,7 +17,7 @@ class SetpointPublisher(Node):
         self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
         self.publisher_ = self.create_publisher(
-            PoseStamped, f"{self.namespace_prefix}/setpoint_pose", 10
+            Odometry, f"{self.namespace_prefix}/setpoint_pose", 10
         )
         self.timer_period = 0.01  # seconds
         time.sleep(5)  # Give time for all inits...
@@ -46,19 +46,19 @@ class SetpointPublisher(Node):
 
     def timer_callback(self):
         x, y, z, qx, qy, qz, qw = self.setpoints[self.index]
-        pose = PoseStamped()
-        pose.header.frame_id = "mocap"
-        pose.header.stamp = Clock().now().to_msg()
-        pose.pose.position.x = x
-        pose.pose.position.y = y
-        pose.pose.position.z = z
+        odom = Odometry()
+        odom.header.frame_id = "mocap"
+        odom.header.stamp = Clock().now().to_msg()
+        odom.pose.pose.position.x = x
+        odom.pose.pose.position.y = y
+        odom.pose.pose.position.z = z
         q = np.array([qx, qy, qz, qw])
         q = q / np.linalg.norm(q)
-        pose.pose.orientation.x = q[0]
-        pose.pose.orientation.y = q[1]
-        pose.pose.orientation.z = q[2]
-        pose.pose.orientation.w = q[3]
-        self.publisher_.publish(pose)
+        odom.pose.pose.orientation.x = q[0]
+        odom.pose.pose.orientation.y = q[1]
+        odom.pose.pose.orientation.z = q[2]
+        odom.pose.pose.orientation.w = q[3]
+        self.publisher_.publish(odom)
 
         if self.counter % 2000 == 0:
             self.index = (self.index + 1) % len(self.setpoints)

@@ -82,6 +82,7 @@ def generate_launch_description():
                 parameters=[
                     {"mode": mode},
                     {"setpoint_from_rviz": setpoint_from_rviz},
+                    {"target_mode": "setpoint"},
                 ],
             ),
             Node(
@@ -100,6 +101,9 @@ def generate_launch_description():
                 name="test_setpoints",
                 output="screen",
                 emulate_tty=True,
+                parameters=[
+                    {"namespace": namespace},
+                ],
                 condition=UnlessCondition(setpoint_from_rviz),
             ),
             Node(
