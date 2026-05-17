@@ -608,10 +608,10 @@ class SpacecraftMPC(Node):
                 self.get_logger().warn(
                     "No valid reference available yet "
                     f"(target_mode={self.target_mode}, setpoint_ok={self.setpoint_ok}, "
-                    f"trajectory_ok={self.trajectory_ok}). Skipping offboard control.",
+                    f"trajectory_ok={self.trajectory_ok}). Hovering current location.",
                     throttle_duration_sec=1.0,
                 )
-                return
+                ref = self.build_hover_reference(x0)
 
         elif self.mode == "direct_allocation":
             x0 = np.array(
@@ -817,6 +817,19 @@ class SpacecraftMPC(Node):
             # ang_vels[i] = [0.0, 0.0, 0.0]
 
         return quats, ang_vels
+
+    def build_hover_reference(self, x0: np.ndarray) -> np.ndarray:
+        """
+        Build a reference that commands the spacecraft to hold its current pose,
+        used as a safe fallback when no valid external reference is available.
+        """
+        hover = np.zeros((16, self.mpc.N + 1))
+        hover[0:3, :] = x0[0:3]  # current position, held
+        hover[3:6, :] = np.zeros((3, self.mpc.N + 1))  # velocity zero (hold still)
+        hover[6:10, :] = x0[6:10]  # current attitude, held
+        hover[10:13, :] = np.zeros((3, self.mpc.N + 1))  # angular velocity zero
+        hover[13:16, :] = np.zeros((3, self.mpc.N + 1))  # control inputs all zero
+        return hover
 
 
 def main(args=None):
