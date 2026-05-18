@@ -140,7 +140,7 @@ class SpacecraftMPC(Node):
             from px4_mpc.models.spacecraft_wrench_model import SpacecraftWrenchModel
 
             self.model = SpacecraftWrenchModel()
-            self.mpc = SpacecraftWrenchMPC(self.model)
+            self.mpc = SpacecraftWrenchMPC(self.model, namespace=self.get_namespace())
         elif self.mode == "direct_allocation":
             from px4_mpc.controllers.spacecraft_direct_allocation_mpc import (
                 SpacecraftDirectAllocationMPC,

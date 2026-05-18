@@ -31,16 +31,20 @@
 #
 ############################################################################
 
-from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
-import numpy as np
-import casadi as cs
 import os
+import re
+
+import casadi as cs
+import numpy as np
+from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
+
 from px4_mpc.utils.rotations import quat_error_v_cs
 
 
 class SpacecraftWrenchMPC:
-    def __init__(self, model):
+    def __init__(self, model, namespace=""):
         self.model = model
+        self.namespace = namespace
         self.Tf = 5.0
         self.N = 29
 
@@ -57,7 +61,11 @@ class SpacecraftWrenchMPC:
         # Set directory for code generation and json file
         this_file_dir = os.path.dirname(os.path.abspath(__file__))
         package_root = os.path.abspath(os.path.join(this_file_dir, ".."))
-        codegen_dir = os.path.join(package_root, "mpc_codegen")
+        safe_ns = re.sub(r"[^A-Za-z0-9_]", "_", self.namespace).strip("_")  # sanitize
+        if safe_ns:
+            codegen_dir = os.path.join(package_root, "mpc_codegen", safe_ns)
+        else:
+            codegen_dir = os.path.join(package_root, "mpc_codegen")
         json_path = os.path.join(codegen_dir, "acados_ocp.json")
         os.makedirs(codegen_dir, exist_ok=True)
         ocp.code_export_directory = codegen_dir
